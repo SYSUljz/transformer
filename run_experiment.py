@@ -20,6 +20,7 @@ DATA_DIRECTORY = "/home/jack_li/python/hydromodeling/transformer/processed_data"
 base_params = {
     "data_dir": DATA_DIRECTORY,
     "model_name": "TimeSeriesTransformer",
+    "model_name_brief": "TST",
     "epochs": 3,
     "batch_size": 32,
     "learning_rate": 1e-4,
@@ -43,6 +44,7 @@ for input_w in input_windows_to_test:
         run_params = base_params.copy()
         run_params["input_window"] = input_w
         run_params["output_window"] = output_w
+        run_params["run_name"] = f"{run_params['model_name_brief']}_input{input_w}_output{output_w}"
 
         # train_model() should handle mlflow.start_run() internally
         train_model(run_params)

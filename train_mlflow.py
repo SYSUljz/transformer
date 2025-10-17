@@ -21,7 +21,7 @@ def train_model(params: dict):
     print(f"Using device: {device}")
 
     # --- Start an MLflow Run ---
-    with mlflow.start_run():
+    with mlflow.start_run(run_name=params.get("run_name", "default_run")):
         print("Starting MLflow run...")
         mlflow.log_params(params)
 
