@@ -6,12 +6,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
+
 # -------------------------
 # Helper: clones
 # -------------------------
 def clones(module, N):
     "深拷贝 N 份相同模块（用于堆叠层）"
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
+
 
 # -------------------------
 # Positional Encoding (sinusoidal)
@@ -21,16 +23,19 @@ class PositionalEncoding(nn.Module):
         super().__init__()
         pe = torch.zeros(max_len, d_model)  # (max_len, d_model)
         position = torch.arange(0, max_len).unsqueeze(1).float()  # (max_len,1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model))
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)
+        )
         pe[:, 0::2] = torch.sin(position * div_term)  # even
         pe[:, 1::2] = torch.cos(position * div_term)  # odd
         pe = pe.unsqueeze(0)  # (1, max_len, d_model)
-        self.register_buffer('pe', pe)  # 非可训练参数
+        self.register_buffer("pe", pe)  # 非可训练参数
 
     def forward(self, x):
         # x: (batch, seq_len, d_model)
         seq_len = x.size(1)
         return x + self.pe[:, :seq_len, :].to(x.device)
+
 
 # -------------------------
 # Scaled Dot-Product Attention
@@ -38,7 +43,9 @@ class PositionalEncoding(nn.Module):
 def attention(query, key, value, mask=None, dropout=None):
     # query/key/value: (batch, heads, seq_len, d_k)
     d_k = query.size(-1)
-    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)  # (..., seq_q, seq_k)
+    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(
+        d_k
+    )  # (..., seq_q, seq_k)
     if mask is not None:
         # mask broadcastable to scores; masked positions set to very negative
         scores = scores.masked_fill(mask == 0, -1e9)
@@ -46,6 +53,7 @@ def attention(query, key, value, mask=None, dropout=None):
     if dropout is not None:
         p_attn = dropout(p_attn)
     return torch.matmul(p_attn, value), p_attn
+
 
 # -------------------------
 # Multi-Head Attention
@@ -63,18 +71,26 @@ class MultiHeadedAttention(nn.Module):
     def forward(self, query, key, value, mask=None):
         # query/key/value: (batch, seq_len, d_model)
         nbatches = query.size(0)
+
         # 1) linear projections and split heads
         def reshape_linear(x, linear):
             x = linear(x)  # (batch, seq_len, d_model)
-            x = x.view(nbatches, -1, self.h, self.d_k).transpose(1,2)  # (batch, h, seq_len, d_k)
+            x = x.view(nbatches, -1, self.h, self.d_k).transpose(
+                1, 2
+            )  # (batch, h, seq_len, d_k)
             return x
-        query, key, value = [reshape_linear(x, lin) for x, lin in zip((query, key, value), self.linears[:3])]
+
+        query, key, value = [
+            reshape_linear(x, lin)
+            for x, lin in zip((query, key, value), self.linears[:3])
+        ]
         # 2) apply attention on all heads
         x, self.attn = attention(query, key, value, mask=mask, dropout=self.dropout)
         # 3) concat heads
-        x = x.transpose(1,2).contiguous().view(nbatches, -1, self.h * self.d_k)
+        x = x.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k)
         # 4) final linear
         return self.linears[-1](x)  # (batch, seq_len, d_model)
+
 
 # -------------------------
 # Position-wise Feed-Forward
@@ -89,6 +105,7 @@ class PositionwiseFeedForward(nn.Module):
     def forward(self, x):
         return self.w2(self.dropout(F.relu(self.w1(x))))
 
+
 # -------------------------
 # Encoder Layer
 # -------------------------
@@ -97,7 +114,9 @@ class EncoderLayer(nn.Module):
         super().__init__()
         self.self_attn = self_attn
         self.feed_forward = feed_forward
-        self.sublayer = clones(nn.ModuleList([nn.Identity(), nn.Identity()]), 2)  # placeholders
+        self.sublayer = clones(
+            nn.ModuleList([nn.Identity(), nn.Identity()]), 2
+        )  # placeholders
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
@@ -112,6 +131,7 @@ class EncoderLayer(nn.Module):
         x = self.norm2(x + self.dropout(x2))
         return x
 
+
 # -------------------------
 # Encoder (stack of N layers)
 # -------------------------
@@ -125,6 +145,7 @@ class Encoder(nn.Module):
         for layer in self.layers:
             x = layer(x, src_mask)
         return self.norm(x)
+
 
 # -------------------------
 # Decoder Layer
@@ -153,6 +174,7 @@ class DecoderLayer(nn.Module):
         x = self.norm3(x + self.dropout(x2))
         return x
 
+
 # -------------------------
 # Decoder (stack of N layers)
 # -------------------------
@@ -167,23 +189,49 @@ class Decoder(nn.Module):
             x = layer(x, memory, src_mask, tgt_mask)
         return self.norm(x)
 
+
 # -------------------------
 # Full Transformer (encoder-decoder)
 # -------------------------
 class Transformer(nn.Module):
-    def __init__(self, src_vocab, tgt_vocab, d_model=512, N=6, h=8, d_ff=2048, dropout=0.1, max_len=5000):
+    def __init__(
+        self,
+        src_vocab,
+        tgt_vocab,
+        d_model=512,
+        N=6,
+        h=8,
+        d_ff=2048,
+        dropout=0.1,
+        max_len=5000,
+    ):
         super().__init__()
         self.d_model = d_model
         # Embeddings
-        self.src_embed = nn.Sequential(nn.Embedding(src_vocab, d_model), PositionalEncoding(d_model, max_len))
-        self.tgt_embed = nn.Sequential(nn.Embedding(tgt_vocab, d_model), PositionalEncoding(d_model, max_len))
+        self.src_embed = nn.Sequential(
+            nn.Embedding(src_vocab, d_model), PositionalEncoding(d_model, max_len)
+        )
+        self.tgt_embed = nn.Sequential(
+            nn.Embedding(tgt_vocab, d_model), PositionalEncoding(d_model, max_len)
+        )
 
         # Build attention and feed-forward
         attn = MultiHeadedAttention(h, d_model, dropout)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         # Encoder / Decoder stacks
-        self.encoder = Encoder(EncoderLayer(d_model, copy.deepcopy(attn), copy.deepcopy(ff), dropout), N)
-        self.decoder = Decoder(DecoderLayer(d_model, copy.deepcopy(attn), copy.deepcopy(attn), copy.deepcopy(ff), dropout), N)
+        self.encoder = Encoder(
+            EncoderLayer(d_model, copy.deepcopy(attn), copy.deepcopy(ff), dropout), N
+        )
+        self.decoder = Decoder(
+            DecoderLayer(
+                d_model,
+                copy.deepcopy(attn),
+                copy.deepcopy(attn),
+                copy.deepcopy(ff),
+                dropout,
+            ),
+            N,
+        )
 
         # Generator (to vocab)
         self.generator = nn.Linear(d_model, tgt_vocab)
@@ -206,6 +254,7 @@ class Transformer(nn.Module):
         out = self.generator(dec)  # logits (b, tgt_len, tgt_vocab)
         return out
 
+
 # -------------------------
 # Masks helpers
 # -------------------------
@@ -214,10 +263,14 @@ def make_padding_mask(seq, pad_token=0):
     mask = (seq != pad_token).type(torch.uint8)
     return mask  # dtype uint8 for masked_fill (0 -> masked)
 
+
 def make_src_mask(src, pad_token=0):
     # for encoder-decoder attention we need shape (batch, 1, 1, src_len) or broadcastable
-    mask = make_padding_mask(src, pad_token).unsqueeze(1).unsqueeze(1)  # (b,1,1,src_len)
+    mask = (
+        make_padding_mask(src, pad_token).unsqueeze(1).unsqueeze(1)
+    )  # (b,1,1,src_len)
     return mask
+
 
 def make_tgt_mask(tgt, pad_token=0):
     # combine padding mask and subsequent mask
@@ -225,11 +278,14 @@ def make_tgt_mask(tgt, pad_token=0):
     # padding mask: (b, 1, 1, tgt_len)
     pad_mask = make_padding_mask(tgt, pad_token).unsqueeze(1).unsqueeze(1)
     # subsequent mask: (1, 1, tgt_len, tgt_len)
-    subsequent = torch.triu(torch.ones((tgt_len, tgt_len), device=tgt.device), diagonal=1).type(torch.uint8)
+    subsequent = torch.triu(
+        torch.ones((tgt_len, tgt_len), device=tgt.device), diagonal=1
+    ).type(torch.uint8)
     subsequent_mask = (subsequent == 0).unsqueeze(0).unsqueeze(0)  # True where allowed
     # combine: allowed if both pad_mask==1 and subsequent_mask==1
     combined = pad_mask & subsequent_mask
     return combined  # boolean mask (b,1,tgt_len,tgt_len)
+
 
 # -------------------------
 # Toy dataset: copy task
@@ -254,6 +310,7 @@ class CopyDataset(Dataset):
         tgt_input = torch.cat([torch.tensor([start_token]), tgt[:-1]])
         return src, tgt_input, tgt  # note: tgt is the expected output
 
+
 def collate_fn(batch):
     srcs, tgt_inputs, tgts = zip(*batch)
     srcs = torch.stack(srcs)
@@ -261,13 +318,14 @@ def collate_fn(batch):
     tgts = torch.stack(tgts)
     return srcs, tgt_inputs, tgts
 
+
 # -------------------------
 # Greedy decode (inference)
 # -------------------------
-def greedy_decode(model, src, src_mask, max_len, start_symbol=1, device='cpu'):
+def greedy_decode(model, src, src_mask, max_len, start_symbol=1, device="cpu"):
     # src: (1, src_len)
     memory = model.encode(src, src_mask)
-    ys = torch.ones(1,1).fill_(start_symbol).type_as(src).to(device)  # (1,1)
+    ys = torch.ones(1, 1).fill_(start_symbol).type_as(src).to(device)  # (1,1)
     for i in range(max_len):
         tgt_mask = make_tgt_mask(ys, pad_token=0).to(device)  # (1,1,cur_len,cur_len)
         out = model.decode(ys, memory, src_mask, tgt_mask)  # (1, cur_len, d_model)
@@ -276,14 +334,23 @@ def greedy_decode(model, src, src_mask, max_len, start_symbol=1, device='cpu'):
         ys = torch.cat([ys, next_word], dim=1)
     return ys  # (1, max_len+1)
 
+
 # -------------------------
 # Small training loop example
 # -------------------------
 def run_toy_training():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     vocab_size = 12  # 0: PAD, 1: START, 2..11 tokens
-    model = Transformer(src_vocab=vocab_size, tgt_vocab=vocab_size,
-                        d_model=128, N=2, h=4, d_ff=256, dropout=0.1, max_len=50).to(device)
+    model = Transformer(
+        src_vocab=vocab_size,
+        tgt_vocab=vocab_size,
+        d_model=128,
+        N=2,
+        h=4,
+        d_ff=256,
+        dropout=0.1,
+        max_len=50,
+    ).to(device)
 
     dataset = CopyDataset(n_samples=2000, seq_len=8, vocab_size=vocab_size)
     loader = DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
@@ -295,11 +362,13 @@ def run_toy_training():
     for epoch in range(5):
         total_loss = 0.0
         for src, tgt_input, tgt in loader:
-            src = src.to(device)         # (b, src_len)
+            src = src.to(device)  # (b, src_len)
             tgt_input = tgt_input.to(device)  # (b, tgt_len)
-            tgt = tgt.to(device)         # (b, tgt_len)
-            src_mask = make_src_mask(src, pad_token=0).to(device)     # (b,1,1,src_len)
-            tgt_mask = make_tgt_mask(tgt_input, pad_token=0).to(device)  # (b,1,tgt_len,tgt_len)
+            tgt = tgt.to(device)  # (b, tgt_len)
+            src_mask = make_src_mask(src, pad_token=0).to(device)  # (b,1,1,src_len)
+            tgt_mask = make_tgt_mask(tgt_input, pad_token=0).to(
+                device
+            )  # (b,1,tgt_len,tgt_len)
 
             out = model(src, tgt_input, src_mask, tgt_mask)  # (b, tgt_len, vocab)
             loss = criterion(out.view(-1, out.size(-1)), tgt.view(-1))
@@ -315,9 +384,12 @@ def run_toy_training():
     model.eval()
     src_example = dataset[0][0].unsqueeze(0).to(device)  # (1, src_len)
     src_mask = make_src_mask(src_example, pad_token=0).to(device)
-    decoded = greedy_decode(model, src_example, src_mask, max_len=8, start_symbol=1, device=device)
+    decoded = greedy_decode(
+        model, src_example, src_mask, max_len=8, start_symbol=1, device=device
+    )
     print("src:", src_example.cpu().numpy())
     print("decoded:", decoded.cpu().numpy())
+
 
 if __name__ == "__main__":
     run_toy_training()

@@ -1,14 +1,97 @@
+# File: train_mlflow.py
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import os
 import mlflow
 import mlflow.pytorch
+import pandas as pd # ✅ Import pandas
 
 # Import your custom modules
 from dataload import load_all_floods, FloodDataset
 from forecasting_transformer import TimeSeriesTransformer
 from transformer import make_tgt_mask
+
+# 💡 NEW HELPER FUNCTION: To generate predictions and save them
+def validate_and_save_predictions(model, params, device, epoch):
+    """
+    Generates and saves predictions on the validation dataset.
+    This uses the same auto-regressive logic as your predict.py.
+    """
+    print("\n--- Running validation and saving predictions ---")
+    predict_data_dir = params.get("predict_data_dir")
+    if not predict_data_dir:
+        print("Warning: 'predict_data_dir' not in params. Skipping validation.")
+        return
+
+    # 1. Load validation data
+    dfs = load_all_floods(predict_data_dir)
+    if not dfs:
+        print(f"Warning: No CSV files found in prediction dir '{predict_data_dir}'.")
+        return
+        
+    dataset = FloodDataset(
+        dfs,
+        input_window=params["input_window"],
+        output_window=params["output_window"],
+        fill_value=0.0
+    )
+    if len(dataset) == 0:
+        print("Warning: Prediction dataset is empty.")
+        return
+        
+    dataloader = DataLoader(dataset, batch_size=params["batch_size"], shuffle=False)
+    
+    # 2. Generate predictions
+    model.eval() # Set model to evaluation mode
+    all_preds, all_reals = [], []
+    output_window = params['output_window']
+
+    with torch.no_grad():
+        for src, tgt_y in dataloader:
+            src, tgt_y = src.to(device), tgt_y.to(device)
+            
+            # Create masks and initial decoder input for a single forward pass
+            src_mask = torch.ones(src.shape[0], 1, 1, src.shape[1]).to(device)
+            
+            # Initialize decoder_input with zeros for the entire output window
+            # Shape: [batch_size, output_window, 1]
+            decoder_input = torch.zeros(src.shape[0], output_window, 1).to(device)
+            
+            # Create target mask for the decoder
+            # Squeeze to remove the last dimension for mask creation: [batch_size, output_window]
+            tgt_mask = make_tgt_mask(decoder_input.squeeze(-1)).to(device)
+            
+            # Generate predictions in a single forward pass as requested
+            predictions = model(src, decoder_input, src_mask, tgt_mask)
+            
+            # Collect results
+            final_preds = predictions.squeeze(-1) # Squeeze the feature dimension
+            all_preds.append(final_preds.cpu())
+            all_reals.append(tgt_y.cpu())
+            
+    predictions = torch.cat(all_preds)
+    ground_truth = torch.cat(all_reals)
+
+    # 3. Save results to a CSV
+    pred_df = pd.DataFrame(predictions.numpy(), columns=[f'pred_step_{i+1}' for i in range(predictions.shape[1])])
+    truth_df = pd.DataFrame(ground_truth.numpy(), columns=[f'true_step_{i+1}' for i in range(ground_truth.shape[1])])
+    results_df = pd.concat([truth_df, pred_df], axis=1)
+    
+    # Save locally first
+    output_dir = "predictions"
+    os.makedirs(output_dir, exist_ok=True)
+    csv_path = os.path.join(output_dir, f"predictions_epoch_{epoch+1}.csv")
+    results_df.to_csv(csv_path, index=False)
+    print(f"✅ Saved validation predictions to {csv_path}")
+
+    # 4. Log the CSV to MLflow
+    mlflow.log_artifact(csv_path)
+    print("✅ Logged prediction CSV as an MLflow artifact.")
+    
+    model.train() # Set model back to training mode
+    print("--- Finished validation ---\n")
 
 def train_model(params: dict):
     """
@@ -17,7 +100,7 @@ def train_model(params: dict):
     Args:
         params (dict): A dictionary containing all hyperparameters.
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('mps' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
     # --- Start an MLflow Run ---
@@ -45,7 +128,7 @@ def train_model(params: dict):
 
         dataloader = DataLoader(dataset, batch_size=params["batch_size"], shuffle=True)
 
-        sample_x, _, _ = dataset[0]
+        sample_x, _ = dataset[0]
         num_input_features = sample_x.shape[1]
         print(f"Detected {num_input_features} input features.")
 
@@ -78,8 +161,10 @@ def train_model(params: dict):
         print("Starting training loop...")
 
         for epoch in range(params["epochs"]):
+            # ... (inner loop for training batches is unchanged) ...
+            # ...
             epoch_loss = 0.0
-            for i, (src, tgt_y, _) in enumerate(dataloader):
+            for i, (src, tgt_y) in enumerate(dataloader):
                 src, tgt_y = src.to(device), tgt_y.to(device)
 
                 decoder_input = torch.zeros_like(tgt_y)
@@ -92,13 +177,13 @@ def train_model(params: dict):
                 optimizer.zero_grad()
                 predictions = model(src, decoder_input, src_mask, tgt_mask)
                 loss = criterion(predictions.squeeze(-1), tgt_y)
-
+                if epoch == 19:
+                    print(predictions.squeeze(-1))
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
 
                 epoch_loss += loss.item()
-
             avg_loss = epoch_loss / len(dataloader)
             print(f"Epoch [{epoch+1}/{params['epochs']}], Average Loss: {avg_loss:.6f}")
             mlflow.log_metric("avg_loss", avg_loss, step=epoch)
@@ -119,7 +204,12 @@ def train_model(params: dict):
 
                 # ✅ Also log full model to MLflow (with environment info)
                 mlflow.pytorch.log_model(model, "best_model")
-
+                
                 print(f"New best model logged to MLflow with loss: {best_loss:.6f}")
+                
+                # 💡 CALL THE NEW VALIDATION FUNCTION HERE
+                # This will run inference on your separate data and save the CSV.
+                validate_and_save_predictions(model, params, device, epoch)
 
         print("MLflow run finished.")
+

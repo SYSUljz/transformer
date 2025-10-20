@@ -1,7 +1,16 @@
 import torch
 import torch.nn as nn
 import copy
-from transformer import Encoder, Decoder, EncoderLayer, DecoderLayer, MultiHeadedAttention, PositionwiseFeedForward, PositionalEncoding
+from transformer import (
+    Encoder,
+    Decoder,
+    EncoderLayer,
+    DecoderLayer,
+    MultiHeadedAttention,
+    PositionwiseFeedForward,
+    PositionalEncoding,
+)
+
 
 class TimeSeriesTransformer(nn.Module):
     """
@@ -12,7 +21,18 @@ class TimeSeriesTransformer(nn.Module):
     input data. It also changes the final output layer to predict a single
     continuous value instead of a vocabulary distribution.
     """
-    def __init__(self, input_features, dec_features, d_model=512, N=6, h=8, d_ff=2048, dropout=0.1, max_len=5000):
+
+    def __init__(
+        self,
+        input_features,
+        dec_features,
+        d_model=512,
+        N=6,
+        h=8,
+        d_ff=2048,
+        dropout=0.1,
+        max_len=5000,
+    ):
         """
         Args:
             input_features (int): Number of features in the input sequence (e.g., number of monitoring sites).
@@ -35,9 +55,20 @@ class TimeSeriesTransformer(nn.Module):
         # --- Core Transformer Components (reused from your transformer.py) ---
         attn = MultiHeadedAttention(h, d_model, dropout)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
-        
-        self.encoder = Encoder(EncoderLayer(d_model, copy.deepcopy(attn), copy.deepcopy(ff), dropout), N)
-        self.decoder = Decoder(DecoderLayer(d_model, copy.deepcopy(attn), copy.deepcopy(attn), copy.deepcopy(ff), dropout), N)
+
+        self.encoder = Encoder(
+            EncoderLayer(d_model, copy.deepcopy(attn), copy.deepcopy(ff), dropout), N
+        )
+        self.decoder = Decoder(
+            DecoderLayer(
+                d_model,
+                copy.deepcopy(attn),
+                copy.deepcopy(attn),
+                copy.deepcopy(ff),
+                dropout,
+            ),
+            N,
+        )
 
         # --- Output Layer for Regression ---
         # This layer maps the decoder's output to our desired number of forecast features (1 for 'flow').
