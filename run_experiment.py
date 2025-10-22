@@ -15,27 +15,27 @@ print(f"[MLflow] Using experiment: {EXPERIMENT_NAME}")
 print(f"[MLflow] Tracking URI: {mlflow.get_tracking_uri()}")
 
 # --- 4️⃣ Base Training Parameters ---
-DATA_DIRECTORY = "/Users/jackli/Downloads/processed_data"
+DATA_DIRECTORY = "/Users/jackli/Desktop/python/transformer/processed_data_test"
 # File: run_experiment.py
 
 # --- 4️⃣ Base Training Parameters ---
-DATA_DIRECTORY = "/Users/jackli/Downloads/processed_data"
+DATA_DIRECTORY = "/Users/jackli/Desktop/python/transformer/processed_data_test"
 # ✅ Define the separate directory for prediction data
-PREDICT_DATA_DIRECTORY = "/Users/jackli/Desktop/python/transformer/predict_data"
+PREDICT_DATA_DIRECTORY = "/Users/jackli/Desktop/python/transformer/processed_data_test"
 
 base_params = {
     "data_dir": DATA_DIRECTORY,
     "predict_data_dir": PREDICT_DATA_DIRECTORY,  # Add this line
     "model_name": "TimeSeriesTransformer",
     "model_name_brief": "TST",
-    "epochs": 20,
-    "batch_size": 32,
-    "learning_rate": 4*1e-4,
+    "epochs": 60,
+    "batch_size": 5,
+    "learning_rate": 1e-4,
     "d_model": 128,
     "n_layers": 3,
     "n_heads": 4,
     "d_ff": 256,
-    "dropout": 0.1,
+    "dropout": 0.01,
 }
 
 # ... (the rest of the file remains the same)
@@ -43,7 +43,7 @@ base_params = {
 # --- 5️⃣ Hyperparameter Search ---5
 # input_windows_to_test = [24, 36, 48]
 # output_windows_to_test = [4 ,6, 12]
-input_windows_to_test = [48]
+input_windows_to_test = [12]
 output_windows_to_test = [4]
 
 print("Starting hyperparameter tuning...")

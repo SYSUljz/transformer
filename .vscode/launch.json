@@ -10,7 +10,26 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "python": "/home/jack_li/python/hydromodeling/modeling_env/bin/python"
+            "python": "/Users/jackli/Desktop/python/transformer/transformer/bin/python",
+            "justMyCode": false,
+            "args": [
+                "--mlflow_dir",
+                "./mlflow_result/",
+                "--run_id",
+                "9fa6d16c3f694732a8ad11fd1d7c6973",
+                "--predict_data_dir",
+                "/Users/jackli/Desktop/python/transformer/predict_data",
+                "--output_csv",
+                "new_forecasts.csv"
+            ]
+        },
+        {
+            "name": "run test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "python": "/Users/jackli/Desktop/python/transformer/transformer/bin/python",
         }
     ]
 }
