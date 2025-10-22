@@ -205,3 +205,12 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+mlflow_result/
+
+mlflow_results/
+
+*.csv
+mlflow_results/
+processed_data/
